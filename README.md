@@ -29,7 +29,7 @@ App: http://localhost:5173
 - **backend/** – FastAPI app
   - `app/main.py` – app entry, CORS, router
   - `app/workflow_routes.py` – workflows API (blocks, upload, run, job status)
-  - `app/workflow.py` – Pydantic models (BlockType, WorkflowDefinition, JobProgress, etc.)
+  - `app/workflow.py` – Pydantic models (BlockType, Workflow, WorkflowExecution, JobProgress, etc.)
   - `app/workflow_engine.py` – runs blocks in order, keeps job progress
   - `app/blocks/` – block implementations (read_csv, enrich_lead, find_email, filter, save_csv)
   - `app/config.py` – settings (API key, CORS)

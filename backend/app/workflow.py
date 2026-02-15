@@ -20,18 +20,18 @@ class BlockConfig(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
 
 
-class WorkflowDefinition(BaseModel):
-    """Ordered list of blocks that form a workflow."""
+class Workflow(BaseModel):
+    """Workflow definition."""
 
     name: str = "Untitled Workflow"
     blocks: list[BlockConfig] = Field(default_factory=list)
 
 
-class WorkflowRunRequest(BaseModel):
-    """Request to run a workflow (workflow def + optional input file)."""
+class WorkflowExecution(BaseModel):
+    """One execution of a workflow."""
 
-    workflow: WorkflowDefinition
-    input_file_path: str | None = None  # For read_csv; can be set when uploading
+    workflow: Workflow
+    input_file_path: str | None = None  # Override first block's file_path if it's read_csv
 
 
 class JobStatus(str, Enum):

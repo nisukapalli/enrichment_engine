@@ -44,7 +44,7 @@
 
 1. **Backend**
    - **Config** (`app/config.py`): API key, base URL, CORS origins (from env).
-   - **Workflow models** (`app/workflow.py`): `BlockType`, `BlockConfig`, `WorkflowDefinition`, `WorkflowRunRequest`, `JobStatus`, `BlockResult`, `JobProgress` — shared shapes for API and engine.
+   - **Workflow models** (`app/workflow.py`): `BlockType`, `BlockConfig`, `Workflow` (definition), `WorkflowExecution` (workflow + runtime overrides), `JobStatus`, `BlockResult`, `JobProgress`.
    - **Workflow routes** (`app/workflow_routes.py`): HTTP handlers; the only place that talks to `WorkflowEngine`. One shared `WorkflowEngine()` instance holds all jobs in memory.
    - **Workflow engine** (`app/workflow_engine.py`): Creates jobs, runs a list of `BlockConfig` in order in a background task, passes a single pandas DataFrame from block to block, and updates one `JobProgress` per job (status, current block index, list of `BlockResult` with optional sample_data).
    - **Blocks** (`app/blocks/`): Each block has a `run(df, config, context)` that returns `(new_df, meta)`. First block (e.g. read_csv) can get `df=None`; later blocks get the previous block’s DataFrame. `BlockContext` carries API key and base URL.
@@ -58,7 +58,7 @@
    - **api.ts**: All backend calls go through here (getBlockTypes, uploadCsv, runWorkflow, getJobProgress). Base URL is relative so Vite proxy sends them to the backend.
 
 3. **Data flow**
-   - Workflow definition lives in React state as `blocks: BlockConfig[]` (id, type, params). Same shape as backend `WorkflowDefinition.blocks`.
+   - Workflow definition lives in React state as `blocks: BlockConfig[]` (id, type, params). Same shape as backend `Workflow.blocks`. A run sends `WorkflowExecution`: `{ workflow: { name, blocks }, input_file_path? }`.
    - On run, frontend sends `{ workflow: { name, blocks }, input_file_path? }`. Backend can override the first block’s `file_path` with `input_file_path` if it’s read_csv.
    - Job progress is only on the backend; frontend has no workflow queue. Polling reads the same `JobProgress` object the engine updates.
 
@@ -124,7 +124,7 @@ Data flow inside engine: `df` starts as `None`. read_csv returns a DataFrame; ev
 |--------|----------|------|--------|
 | Load block types | `getBlockTypes()` | GET /api/workflows/blocks | List block types + param hints |
 | Upload CSV | `uploadCsv(file)` | POST /api/workflows/upload (form) | Save file, return file_path |
-| Run workflow | `runWorkflow({ workflow, input_file_path })` | POST /api/workflows/run (JSON) | create_job, run_workflow in background, return job_id |
+| Run workflow | `runWorkflow({ workflow, input_file_path? })` | POST /api/workflows/run (JSON) | create_job, run_workflow in background, return job_id |
 | Poll progress | `getJobProgress(jobId)` | GET /api/workflows/jobs/:id | Return JobProgress for that job |
 
 ---
@@ -136,7 +136,7 @@ backend/
   app/
     main.py              # FastAPI app, CORS, lifespan, include_router
     config.py            # Settings (API_KEY, URL, CORS_ORIGINS)
-    workflow.py          # BlockType, BlockConfig, WorkflowDefinition, WorkflowRunRequest, JobProgress, BlockResult
+    workflow.py          # BlockType, BlockConfig, Workflow, WorkflowExecution, JobProgress, BlockResult
     workflow_routes.py   # GET blocks, POST upload, POST run, GET jobs/:id
     workflow_engine.py   # WorkflowEngine, BLOCK_REGISTRY, run_workflow loop
     blocks/
@@ -151,7 +151,7 @@ frontend/
   src/
     App.tsx              # workflow state, handleRun, polling, layout
     api.ts               # getBlockTypes, uploadCsv, runWorkflow, getJobProgress
-    types.ts             # BlockConfig, WorkflowDefinition, JobProgress, etc.
+    types.ts             # BlockConfig, Workflow, WorkflowExecution, JobProgress, etc.
     components/
       WorkflowBuilder.tsx  # palette, blocks list (sortable), upload, run button
       BlockCard.tsx       # single block UI, params form, remove

@@ -15,13 +15,9 @@ function App() {
     async (inputFilePath: string | null) => {
       setCurrentJob(null)
       setJobId(null)
-      const workflow = {
-        name: workflowName,
-        blocks,
-      }
       try {
         const { job_id } = await (await import('./api')).runWorkflow({
-          workflow,
+          workflow: { name: workflowName, blocks },
           input_file_path: inputFilePath ?? undefined,
         })
         setJobId(job_id)

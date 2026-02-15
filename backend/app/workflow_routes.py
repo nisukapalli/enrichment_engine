@@ -4,7 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 
-from app.workflow import BlockType, JobProgress, WorkflowDefinition, WorkflowRunRequest
+from app.workflow import BlockType, JobProgress, Workflow, WorkflowExecution
 from app.workflow_engine import WorkflowEngine
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
@@ -38,11 +38,12 @@ async def upload_file(file: UploadFile = File(...)) -> dict[str, str]:
 
 
 @router.post("/run")
-async def run_workflow(background_tasks: BackgroundTasks, body: WorkflowRunRequest) -> dict[str, str]:
+async def run_workflow(background_tasks: BackgroundTasks, body: WorkflowExecution) -> dict[str, str]:
     """Start a workflow run. Returns job_id for polling progress."""
-    if not body.workflow.blocks:
+    workflow = body.workflow
+    if not workflow.blocks:
         raise HTTPException(400, "Workflow must have at least one block")
-    blocks = [b.model_copy(deep=True) for b in body.workflow.blocks]
+    blocks = [b.model_copy(deep=True) for b in workflow.blocks]
     if body.input_file_path and blocks[0].type == BlockType.READ_CSV:
         blocks[0].params["file_path"] = body.input_file_path
     job_id = engine.create_job(blocks)

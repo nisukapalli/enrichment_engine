@@ -11,13 +11,13 @@ export interface BlockConfig {
   params: Record<string, unknown>
 }
 
-export interface WorkflowDefinition {
+export interface Workflow {
   name: string
   blocks: BlockConfig[]
 }
 
-export interface WorkflowRunRequest {
-  workflow: WorkflowDefinition
+export interface WorkflowExecution {
+  workflow: Workflow
   input_file_path?: string | null
 }
 

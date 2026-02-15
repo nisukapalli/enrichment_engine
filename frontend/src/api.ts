@@ -1,8 +1,8 @@
 import type {
   BlockTypeInfo,
   JobProgress,
-  WorkflowDefinition,
-  WorkflowRunRequest,
+  Workflow,
+  WorkflowExecution,
 } from './types'
 
 const API_BASE = '/api/workflows'
@@ -25,7 +25,7 @@ export async function uploadCsv(file: File): Promise<{ file_path: string }> {
 }
 
 export async function runWorkflow(
-  body: WorkflowRunRequest
+  body: WorkflowExecution
 ): Promise<{ job_id: string }> {
   const res = await fetch(`${API_BASE}/run`, {
     method: 'POST',
