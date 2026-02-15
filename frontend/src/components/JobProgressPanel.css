@@ -1,0 +1,115 @@
+.job-panel {
+  font-size: 0.9rem;
+}
+
+.job-panel h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.job-placeholder {
+  color: #666;
+  margin: 0;
+}
+
+.job-id {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.job-id code {
+  background: #ddd;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+}
+
+.job-status {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.job-status-pending {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.job-status-running {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.job-status-completed {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.job-status-failed {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.job-status-cancelled {
+  background: #f5f5f5;
+  color: #757575;
+}
+
+.job-error {
+  color: #c62828;
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+}
+
+.job-blocks {
+  margin-top: 1rem;
+}
+
+.block-count {
+  margin-left: 0.5rem;
+  color: #666;
+}
+
+.blocks-completed {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.blocks-completed li {
+  margin-bottom: 0.5rem;
+}
+
+.block-type {
+  font-weight: 500;
+}
+
+.block-rows {
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.block-err {
+  color: #c00;
+  font-size: 0.85rem;
+}
+
+.block-sample {
+  margin-top: 0.25rem;
+}
+
+.block-sample summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.block-sample pre {
+  margin: 0.25rem 0 0;
+  padding: 0.5rem;
+  background: #fff;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  overflow: auto;
+  max-height: 200px;
+}
