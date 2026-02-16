@@ -39,13 +39,13 @@ async def upload_file(file: UploadFile = File(...)) -> dict[str, str]:
 
 @router.post("/run")
 async def run_workflow(background_tasks: BackgroundTasks, body: WorkflowExecution) -> dict[str, str]:
-    """Start a workflow run. Returns job_id for polling progress."""
+    """Run a workflow. Returns job_id for polling progress."""
     workflow = body.workflow
     if not workflow.blocks:
         raise HTTPException(400, "Workflow must have at least one block")
     blocks = [b.model_copy(deep=True) for b in workflow.blocks]
-    if body.input_file_path and blocks[0].type == BlockType.READ_CSV:
-        blocks[0].params["file_path"] = body.input_file_path
+    if body.input_path and blocks[0].type == BlockType.READ_CSV:
+        blocks[0].params["file_path"] = body.input_path
     job_id = engine.create_job(blocks)
     background_tasks.add_task(engine.run_workflow, job_id, blocks)
     return {"job_id": job_id}

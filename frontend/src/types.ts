@@ -5,7 +5,7 @@ export type BlockType =
   | 'filter'
   | 'save_csv'
 
-export interface BlockConfig {
+export interface Block {
   id: string
   type: BlockType
   params: Record<string, unknown>
@@ -13,12 +13,12 @@ export interface BlockConfig {
 
 export interface Workflow {
   name: string
-  blocks: BlockConfig[]
+  blocks: Block[]
 }
 
 export interface WorkflowExecution {
   workflow: Workflow
-  input_file_path?: string | null
+  input_path?: string | null
 }
 
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'

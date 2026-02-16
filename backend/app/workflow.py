@@ -12,7 +12,7 @@ class BlockType(str, Enum):
     SAVE_CSV = "save_csv"
 
 
-class BlockConfig(BaseModel):
+class Block(BaseModel):
     """Configuration for a single block in a workflow."""
 
     id: str
@@ -24,14 +24,14 @@ class Workflow(BaseModel):
     """Workflow definition."""
 
     name: str = "Untitled Workflow"
-    blocks: list[BlockConfig] = Field(default_factory=list)
+    blocks: list[Block] = Field(default_factory=list)
 
 
 class WorkflowExecution(BaseModel):
     """One execution of a workflow."""
 
     workflow: Workflow
-    input_file_path: str | None = None  # Override first block's file_path if it's read_csv
+    input_path: str | None = None  # Override first block's file_path if it's read_csv
 
 
 class JobStatus(str, Enum):

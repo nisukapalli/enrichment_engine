@@ -35,6 +35,12 @@ frontend/dist/
 .DS_Store
 Thumbs.db
 
+# Data directories (uploaded and generated files)
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/outputs/*
+!backend/outputs/.gitkeep
+
 # Misc
 *.log
 .coverage

@@ -3,23 +3,7 @@ from typing import Any
 
 import pandas as pd
 
-from app.workflow import BlockConfig, BlockType
-
-
-class BlockContext:
-    """Shared context passed through the workflow (API key, paths, etc.)."""
-
-    def __init__(
-        self,
-        api_key: str = "",
-        base_url: str = "https://api.sixtyfour.ai",
-        upload_dir: str = "uploads",
-        output_dir: str = "outputs",
-    ):
-        self.api_key = api_key
-        self.base_url = base_url
-        self.upload_dir = upload_dir
-        self.output_dir = output_dir
+from app.workflow import Block, BlockType
 
 
 class BlockBase(ABC):
@@ -31,8 +15,7 @@ class BlockBase(ABC):
     async def run(
         self,
         df: pd.DataFrame | None,
-        config: BlockConfig,
-        context: BlockContext,
+        config: Block,
     ) -> tuple[pd.DataFrame, dict[str, Any]]:
         """
         Execute the block. Returns (updated DataFrame, result metadata).

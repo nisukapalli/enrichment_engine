@@ -4,9 +4,9 @@ import httpx
 import pandas as pd
 
 from app.config import settings
-from app.workflow import BlockConfig, BlockType
+from app.workflow import Block, BlockType
 
-from .base import BlockBase, BlockContext
+from .base import BlockBase
 
 
 class FindEmailBlock(BlockBase):
@@ -15,8 +15,7 @@ class FindEmailBlock(BlockBase):
     async def run(
         self,
         df: pd.DataFrame | None,
-        config: BlockConfig,
-        context: BlockContext,
+        config: Block,
     ) -> tuple[pd.DataFrame, dict[str, Any]]:
         if df is None or len(df) == 0:
             raise ValueError("find_email requires a non-empty dataframe from previous block")
@@ -28,9 +27,9 @@ class FindEmailBlock(BlockBase):
             for _, row in df.iterrows():
                 lead = {k: v for k, v in row.items() if pd.notna(v) and v != ""}
                 resp = await client.post(
-                    f"{context.base_url}/find-email",
+                    f"{settings.URL}/find-email",
                     headers={
-                        "x-api-key": context.api_key or settings.API_KEY,
+                        "x-api-key": settings.API_KEY,
                         "Content-Type": "application/json",
                     },
                     json={"lead": lead, "mode": mode},

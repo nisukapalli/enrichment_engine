@@ -1,8 +1,8 @@
 import pandas as pd
 
-from app.workflow import BlockConfig, BlockType
+from app.workflow import Block, BlockType
 
-from .base import BlockBase, BlockContext
+from .base import BlockBase
 
 
 class FilterBlock(BlockBase):
@@ -11,8 +11,7 @@ class FilterBlock(BlockBase):
     async def run(
         self,
         df: pd.DataFrame | None,
-        config: BlockConfig,
-        context: BlockContext,
+        config: Block,
     ) -> tuple[pd.DataFrame, dict]:
         if df is None or len(df) == 0:
             raise ValueError("filter requires a non-empty dataframe from previous block")
