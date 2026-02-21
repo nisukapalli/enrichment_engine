@@ -12,7 +12,7 @@ def list_jobs() -> List[Job]:
 
 
 def get_job(job_id: str) -> Optional[Job]:
-    return _jobs.get(job_id, None)
+    return _jobs.get(job_id)
 
 
 def create_job(*, workflow_id: str, total_blocks: int) -> Job:

@@ -3,6 +3,7 @@ from typing import List
 from app.models.workflow import Workflow, WorkflowCreate, WorkflowUpdate
 from app.services import  workflow_store
 
+
 router = APIRouter(
     prefix="/workflows",
     tags=["workflows"],
@@ -35,7 +36,7 @@ def create_workflow(payload: "WorkflowCreate"):
             detail=str(e),
         )
 
-ex
+
 @router.patch("/{workflow_id}", response_model="Workflow")
 def update_workflow(workflow_id: str, payload: "WorkflowUpdate"):
     try:
@@ -51,6 +52,7 @@ def update_workflow(workflow_id: str, payload: "WorkflowUpdate"):
             detail="Workflow not found",
         )
     return updated
+
 
 @router.delete("/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_workflow(workflow_id: str):
