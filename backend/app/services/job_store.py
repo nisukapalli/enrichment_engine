@@ -1,6 +1,8 @@
-from typing import Dict, List, Optional
-from datetime import datetime
+import uuid
+from typing import Dict, List, Any, Optional
+from datetime import datetime, timezone
 from app.models.job import Job, JobStatus
+from app.services import workflow_store
 
 
 # In-memory storage: job_id -> Job
@@ -15,30 +17,51 @@ def get_job(job_id: str) -> Optional[Job]:
     return _jobs.get(job_id)
 
 
-def create_job(*, workflow_id: str, total_blocks: int) -> Job:
-    """
-    Create and store a new job for running a workflow.
-
-    Responsibilities (you will implement later):
-    - generate job id
-    - set status=PENDING
-    - set created_at
-    - initialize progress fields (completed_blocks=0, current_block_id=None, etc.)
-    - optionally initialize block_states
-    - store in _jobs
-    """
-    raise NotImplementedError
-
-
-def update_job(job_id: str, job: Job) -> None:
-    """
-    Persist the latest job state into the in-memory store.
-
-    Note: for MVP you can just overwrite _jobs[job_id] = job.
-    """
-    raise NotImplementedError
+def create_job(*, workflow_id: str) -> Job:
+    workflow = workflow_store.get_workflow(workflow_id)
+    if workflow is None:
+        raise ValueError("Workflow not found")
+    
+    job_id = uuid.uuid4().hex
+    total_blocks = len(workflow.blocks)
+    block_states = {block.id: JobStatus.PENDING for block in workflow.blocks}
+    job = Job(
+        id=job_id,
+        workflow_id=workflow_id,
+        status=JobStatus.PENDING,
+        total_blocks=total_blocks,
+        block_states=block_states,
+        created_at=datetime.now(timezone.utc),
+    )
+    _jobs[job_id] = job
+    return job
 
 
-def delete_job(job_id: str) -> bool:
-    """Delete a job from the store. Returns True if deleted."""
-    raise NotImplementedError
+def update_job(job_id: str, updates: Dict[str, Any]) -> Optional[Job]:
+    job = _jobs.get(job_id)
+    if job is None:
+        return None
+    if not updates:
+        return job
+
+    updated_job = job.model_copy(update=updates)
+    _jobs[job_id] = updated_job
+    return updated_job
+
+
+def cancel_job(job_id: str) -> bool:
+    job = _jobs.get(job_id)
+    if job is None:
+        return False
+    if job.status in {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED}:
+        return True
+    
+    now = datetime.now(timezone.utc)
+    updated_job = job.model_copy(
+        update={
+            "status": JobStatus.CANCELLED,
+            "finished_at": now,
+        }
+    )
+    _jobs[job_id] = updated_job
+    return True

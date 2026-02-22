@@ -46,7 +46,7 @@ def get_workflow(workflow_id: str) -> Optional[Workflow]:
 
 
 def create_workflow(payload: WorkflowCreate) -> Workflow:
-    workflow_id = uuid.uuid4().hex[:12]
+    workflow_id = uuid.uuid4().hex
     name = payload.name
     if name is None:
         name = generate_default_name()
@@ -55,7 +55,7 @@ def create_workflow(payload: WorkflowCreate) -> Workflow:
 
     duplicate_ids = check_duplicate_blocks(payload.blocks)
     if duplicate_ids:
-        raise ValueError(f"Duplicate blocks: {duplicate_ids}")
+        raise ValueError(f"Duplicate block ids: {duplicate_ids}")
 
     workflow = Workflow(
         id=workflow_id,
@@ -99,8 +99,4 @@ def update_workflow(workflow_id: str, payload: WorkflowUpdate) -> Optional[Workf
 
 
 def delete_workflow(workflow_id: str) -> bool:
-    if workflow_id not in _workflows:
-        return False
-    
-    del _workflows[workflow_id]
-    return True
+    return _workflows.pop(workflow_id, None) is not None
