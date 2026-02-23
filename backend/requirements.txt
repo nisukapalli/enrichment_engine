@@ -4,3 +4,4 @@ pydantic
 pandas
 httpx
 python-dotenv
+python-multipart

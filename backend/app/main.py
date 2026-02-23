@@ -2,13 +2,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.api import workflows, jobs
+from app.api import workflows, jobs, files
+from app.services import sixtyfour_client
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Starting server at http://127.0.0.1:8000")
     yield
     print("Shutting down server")
+    await sixtyfour_client.close()
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -29,6 +31,7 @@ def create_app() -> FastAPI:
 
     app.include_router(workflows.router)
     app.include_router(jobs.router)
+    app.include_router(files.router)
 
     return app
 
