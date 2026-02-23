@@ -26,8 +26,18 @@ def _safe_filename(filename: str) -> str:
 async def upload_file(file: UploadFile = File(...)):
     """Upload a CSV to the uploads directory. Returns the saved filename."""
     filename = _safe_filename(file.filename or "")
+    if not filename.lower().endswith(".csv"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .csv files are allowed",
+        )
     os.makedirs(_UPLOADS_DIR, exist_ok=True)
     path = os.path.join(_UPLOADS_DIR, filename)
+    if os.path.exists(path):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"File '{filename}' already exists. Delete it first or use a different name.",
+        )
     content = await file.read()
     with open(path, "wb") as f:
         f.write(content)

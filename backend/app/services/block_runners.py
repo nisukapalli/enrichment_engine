@@ -23,7 +23,10 @@ _OUTPUTS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "outputs")
 # ---------------------------------------------------------------------------
 
 def run_read_csv(block: ReadCsvBlock) -> pd.DataFrame:
-    path = os.path.join(_UPLOADS_DIR, block.params.path)
+    filename = os.path.basename(block.params.path)
+    if not filename:
+        raise ValueError(f"Invalid path in read_csv block: '{block.params.path}'")
+    path = os.path.join(_UPLOADS_DIR, filename)
     return pd.read_csv(path)
 
 
@@ -71,8 +74,11 @@ def run_filter(block: FilterBlock, df: pd.DataFrame) -> pd.DataFrame:
 
 
 def run_save_csv(block: SaveCsvBlock, df: pd.DataFrame) -> pd.DataFrame:
+    filename = os.path.basename(block.params.path)
+    if not filename:
+        raise ValueError(f"Invalid path in save_csv block: '{block.params.path}'")
     os.makedirs(_OUTPUTS_DIR, exist_ok=True)
-    path = os.path.join(_OUTPUTS_DIR, block.params.path)
+    path = os.path.join(_OUTPUTS_DIR, filename)
     df.to_csv(path, index=False)
     return df
 

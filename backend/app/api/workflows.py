@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Response, status
 from typing import List
 from app.models.workflow import Workflow, WorkflowCreate, WorkflowUpdate
-from app.services import workflow_store
+from app.services import workflow_store, job_store
 
 
 router = APIRouter(
@@ -56,9 +56,15 @@ def update_workflow(workflow_id: str, payload: WorkflowUpdate):
 
 @router.delete("/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_workflow(workflow_id: str):
-    if not workflow_store.delete_workflow(workflow_id):
+    if workflow_store.get_workflow(workflow_id) is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Workflow not found",
         )
+    if job_store.has_active_job(workflow_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete a workflow with an active job. Cancel the job first.",
+        )
+    workflow_store.delete_workflow(workflow_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

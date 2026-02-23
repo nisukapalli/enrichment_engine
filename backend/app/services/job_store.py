@@ -49,6 +49,15 @@ def update_job(job_id: str, updates: Dict[str, Any]) -> Optional[Job]:
     return updated_job
 
 
+def has_active_job(workflow_id: str) -> bool:
+    """Return True if any job for this workflow is PENDING or RUNNING."""
+    return any(
+        j.workflow_id == workflow_id
+        and j.status in {JobStatus.PENDING, JobStatus.RUNNING}
+        for j in _jobs.values()
+    )
+
+
 def cancel_job(job_id: str) -> bool:
     job = _jobs.get(job_id)
     if job is None:

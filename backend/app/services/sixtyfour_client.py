@@ -34,6 +34,9 @@ async def poll_job_status(task_id: str) -> Dict[str, Any]:
     """Poll until the job is completed or failed. Returns the result dict."""
     elapsed = 0
     while elapsed < _POLL_TIMEOUT:
+        await asyncio.sleep(_POLL_INTERVAL)
+        elapsed += _POLL_INTERVAL
+
         response = await _client.get(f"{URL}/job-status/{task_id}")
         response.raise_for_status()
         data = response.json()
@@ -44,9 +47,6 @@ async def poll_job_status(task_id: str) -> Dict[str, Any]:
             raise RuntimeError(
                 f"Enrich-lead job {task_id} failed: {data.get('error', 'unknown error')}"
             )
-
-        await asyncio.sleep(_POLL_INTERVAL)
-        elapsed += _POLL_INTERVAL
 
     raise TimeoutError(f"Enrich-lead job {task_id} did not complete within {_POLL_TIMEOUT}s")
 
@@ -59,7 +59,7 @@ async def find_email(
     response = await _client.post(
         f"{URL}/find-email",
         json={"lead": lead, "mode": mode},
-        timeout=60,
+        timeout=60,  # longer than the client default (30s) — email lookup can be slow
     )
     response.raise_for_status()
     return response.json()

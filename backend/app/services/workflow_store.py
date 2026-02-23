@@ -110,9 +110,18 @@ def update_workflow(workflow_id: str, payload: WorkflowUpdate) -> Optional[Workf
     if not updated_fields:
         return workflow
 
+    if "name" in updated_fields and updated_fields["name"] is None:
+        del updated_fields["name"]
+
     if "blocks" in updated_fields:
-        updated_fields["blocks"] = _make_blocks(payload.blocks)
-        _validate_block_chain(updated_fields["blocks"])
+        if payload.blocks is None:
+            del updated_fields["blocks"]
+        else:
+            updated_fields["blocks"] = _make_blocks(payload.blocks)
+            _validate_block_chain(updated_fields["blocks"])
+
+    if not updated_fields:
+        return workflow
 
     updated_fields["updated_at"] = datetime.now(timezone.utc)
     updated_workflow = workflow.model_copy(update=updated_fields)
