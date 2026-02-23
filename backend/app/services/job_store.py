@@ -57,10 +57,17 @@ def cancel_job(job_id: str) -> bool:
         return True
     
     now = datetime.now(timezone.utc)
+    terminal = {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED}
+    finished_at = now if job.started_at is not None else None
+    cancelled_block_states = {
+        block_id: (state if state in terminal else JobStatus.CANCELLED)
+        for block_id, state in job.block_states.items()
+    }
     updated_job = job.model_copy(
         update={
             "status": JobStatus.CANCELLED,
-            "finished_at": now,
+            "finished_at": finished_at,
+            "block_states": cancelled_block_states,
         }
     )
     _jobs[job_id] = updated_job

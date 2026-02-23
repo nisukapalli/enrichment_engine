@@ -1,12 +1,15 @@
 import uuid
 from typing import Dict, List, Optional
 from datetime import datetime, timezone
-from app.models.block import Block
+from pydantic import TypeAdapter
+from app.models.block import Block, BlockCreate
 from app.models.workflow import Workflow, WorkflowCreate, WorkflowUpdate
 
 
 # In-memory storage: workflow_id -> Workflow
 _workflows: Dict[str, Workflow] = {}
+
+_block_adapter: TypeAdapter[Block] = TypeAdapter(Block)
 
 
 def generate_default_name() -> str:
@@ -16,7 +19,7 @@ def generate_default_name() -> str:
             suffix = workflow.name[len("Workflow "):]
             if suffix.isdigit():
                 allocated_numbers.add(int(suffix))
-    
+
     i = 1
     while True:
         if i not in allocated_numbers:
@@ -24,17 +27,11 @@ def generate_default_name() -> str:
         i += 1
 
 
-def check_duplicate_blocks(blocks: List[Block]) -> List[str]:
-    block_ids = set()
-    duplicate_ids = set()
-    for block in blocks:
-        if not block.id:
-            raise ValueError("Block id is required")
-        if block.id in block_ids:
-            duplicate_ids.add(block.id)
-        else:
-            block_ids.add(block.id)
-    return sorted(duplicate_ids)
+def _make_blocks(block_creates: List[BlockCreate]) -> List[Block]:
+    return [
+        _block_adapter.validate_python(bc.model_dump() | {"id": uuid.uuid4().hex})
+        for bc in block_creates
+    ]
 
 
 def list_workflows() -> List[Workflow]:
@@ -51,32 +48,20 @@ def create_workflow(payload: WorkflowCreate) -> Workflow:
     if name is None:
         name = generate_default_name()
     created_at = datetime.now(timezone.utc)
-    updated_at = created_at
-
-    duplicate_ids = check_duplicate_blocks(payload.blocks)
-    if duplicate_ids:
-        raise ValueError(f"Duplicate block ids: {duplicate_ids}")
 
     workflow = Workflow(
         id=workflow_id,
         name=name,
         description=payload.description,
-        blocks=payload.blocks,
+        blocks=_make_blocks(payload.blocks),
         created_at=created_at,
-        updated_at=updated_at,
+        updated_at=created_at,
     )
     _workflows[workflow_id] = workflow
-
     return workflow
 
 
 def update_workflow(workflow_id: str, payload: WorkflowUpdate) -> Optional[Workflow]:
-    """
-    - 404 behavior handled by route; return None if missing
-    - apply PATCH semantics (only fields provided)
-    - validate duplicate block ids if blocks updated
-    - bump updated_at
-    """
     workflow = _workflows.get(workflow_id)
     if workflow is None:
         return None
@@ -86,15 +71,11 @@ def update_workflow(workflow_id: str, payload: WorkflowUpdate) -> Optional[Workf
         return workflow
 
     if "blocks" in updated_fields:
-        new_blocks = updated_fields["blocks"]
-        duplicate_ids = check_duplicate_blocks(new_blocks)
-        if duplicate_ids:
-            raise ValueError(f"Duplicate blocks: {duplicate_ids}")
-    
+        updated_fields["blocks"] = _make_blocks(payload.blocks)
+
     updated_fields["updated_at"] = datetime.now(timezone.utc)
     updated_workflow = workflow.model_copy(update=updated_fields)
     _workflows[workflow_id] = updated_workflow
-
     return updated_workflow
 
 

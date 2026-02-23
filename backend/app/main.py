@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-# TODO: import routers
+from app.api import workflows, jobs
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,7 +27,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # TODO: include routers
+    app.include_router(workflows.router)
+    app.include_router(jobs.router)
 
     return app
 

@@ -10,7 +10,7 @@ router = APIRouter(
 )
 
 
-@router.get("/", response_model=List[Job])
+@router.get("", response_model=List[Job])
 def list_jobs():
     return job_store.list_jobs()
 
@@ -26,20 +26,14 @@ def get_job(job_id: str):
     return job
 
 
-@router.post("/", response_model=Job, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=Job, status_code=status.HTTP_201_CREATED)
 def create_job(payload: JobCreate):
     try:
         return job_store.create_job(workflow_id=payload.workflow_id)
     except ValueError as e:
-        detail = str(e)
-        if "not found" in detail.lower():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=detail,
-            )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=detail,
+            detail=str(e),
         )
 
 

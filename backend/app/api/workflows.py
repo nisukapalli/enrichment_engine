@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 from typing import List
 from app.models.workflow import Workflow, WorkflowCreate, WorkflowUpdate
 from app.services import workflow_store
@@ -10,7 +10,7 @@ router = APIRouter(
 )
 
 
-@router.get("/", response_model=List[Workflow])
+@router.get("", response_model=List[Workflow])
 def list_workflows():
     return workflow_store.list_workflows()
 
@@ -26,7 +26,7 @@ def get_workflow(workflow_id: str):
     return workflow
 
 
-@router.post("/", response_model=Workflow, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=Workflow, status_code=status.HTTP_201_CREATED)
 def create_workflow(payload: WorkflowCreate):
     try:
         return workflow_store.create_workflow(payload)
@@ -61,4 +61,4 @@ def delete_workflow(workflow_id: str):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Workflow not found",
         )
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
