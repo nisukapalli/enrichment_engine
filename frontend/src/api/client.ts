@@ -69,5 +69,9 @@ export const api = {
       request<void>(`/files/uploads/${encodeURIComponent(name)}`, { method: 'DELETE' }),
     deleteOutput: (name: string) =>
       request<void>(`/files/outputs/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    getUploadHead: (name: string) =>
+      request<{ rows: Record<string, string>[] }>(`/files/uploads/${encodeURIComponent(name)}/head`).then((r) => r.rows),
+    getOutputHead: (name: string) =>
+      request<{ rows: Record<string, string>[] }>(`/files/outputs/${encodeURIComponent(name)}/head`).then((r) => r.rows),
   },
 }

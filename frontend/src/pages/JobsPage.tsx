@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { XCircle, Play, RefreshCw, ArrowUpRight } from 'lucide-react'
 import { api } from '../api/client'
+import { refreshAllData } from '../lib/refresh'
 import { Card, Badge, Button, PageHeader, EmptyState, Spinner } from '../components/ui'
 import type { Job, Workflow, BlockStatus } from '../api/types'
 
@@ -18,6 +19,14 @@ function JobCard({ job, workflowName, workflowBlocks }: JobCardProps) {
   const cancelMutation = useMutation({
     mutationFn: () => api.jobs.cancel(job.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['jobs'] }),
+  })
+
+  const rerunMutation = useMutation({
+    mutationFn: () => api.jobs.create({ workflow_id: job.workflow_id }),
+    onSuccess: (newJob) => {
+      qc.invalidateQueries({ queryKey: ['jobs'] })
+      navigate(`/jobs/${newJob.id}`)
+    },
   })
 
   const totalBlocks = job.total_blocks
@@ -99,16 +108,28 @@ function JobCard({ job, workflowName, workflowBlocks }: JobCardProps) {
             ? new Date(job.started_at).toLocaleTimeString()
             : new Date(job.created_at).toLocaleTimeString()}
         </span>
-        {isActive && (
-          <button
-            onClick={(e) => { e.stopPropagation(); cancelMutation.mutate() }}
-            disabled={cancelMutation.isPending}
-            className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
-          >
-            <XCircle size={14} />
-            Cancel
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isActive && (
+            <button
+              onClick={(e) => { e.stopPropagation(); cancelMutation.mutate() }}
+              disabled={cancelMutation.isPending}
+              className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
+            >
+              <XCircle size={14} />
+              Cancel
+            </button>
+          )}
+          {!isActive && (
+            <button
+              onClick={(e) => { e.stopPropagation(); rerunMutation.mutate() }}
+              disabled={rerunMutation.isPending}
+              className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-blue-600 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={14} />
+              Rerun
+            </button>
+          )}
+        </div>
         {job.status === 'failed' && job.error_message && (
           <span className="text-sm text-red-500 truncate max-w-[60%]" title={job.error_message}>
             {job.error_message}
@@ -166,7 +187,7 @@ export function JobsPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => qc.invalidateQueries({ queryKey: ['jobs'] })}
+            onClick={() => refreshAllData(qc)}
           >
             <RefreshCw size={14} />
             Refresh

@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Trash2, Play, GripVertical, Save } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Play, GripVertical, Save, Check } from 'lucide-react'
 import { api } from '../api/client'
 import type { Block, BlockType } from '../api/types'
 import { Card, Button, Input, Select, Spinner, Badge } from '../components/ui'
@@ -45,7 +45,7 @@ function defaultBlock(type: BlockType): Block {
     case 'filter':      return { type, params: { column: '', operator: 'contains', value: '' } }
     case 'enrich_lead': return { type, params: { struct: {} } }
     case 'find_email':  return { type, params: { mode: 'PROFESSIONAL' } }
-    case 'save_csv':    return { type, params: { path: '' } }
+    case 'save_csv':    return { type, params: { path: 'output.csv' } }
   }
 }
 
@@ -250,13 +250,22 @@ export function WorkflowBuilderPage() {
     return null
   }
 
+  const [saveToastVisible, setSaveToastVisible] = useState(false)
+
   const saveMutation = useMutation({
     mutationFn: () => api.workflows.update(id!, { name: currentName.trim(), blocks: currentBlocks }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['workflows', id] })
       qc.invalidateQueries({ queryKey: ['workflows'] })
+      setSaveToastVisible(true)
     },
   })
+
+  useEffect(() => {
+    if (!saveToastVisible) return
+    const t = setTimeout(() => setSaveToastVisible(false), 2500)
+    return () => clearTimeout(t)
+  }, [saveToastVisible])
 
   const runMutation = useMutation({
     mutationFn: async () => {
@@ -343,6 +352,24 @@ export function WorkflowBuilderPage() {
 
   return (
     <div className="p-10">
+      {/* Save toast */}
+      <div
+        role="status"
+        aria-live="polite"
+        className={`fixed left-1/2 top-8 z-50 -translate-x-1/2 transition-all duration-300 ease-out ${
+          saveToastVisible
+            ? 'translate-y-0 opacity-100'
+            : '-translate-y-2 opacity-0 pointer-events-none'
+        }`}
+      >
+        <div className="flex items-center gap-2.5 rounded-xl border border-gray-200/80 bg-white px-4 py-3 shadow-lg ring-1 ring-black/5">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100">
+            <Check size={18} className="text-emerald-600" strokeWidth={2.5} />
+          </span>
+          <span className="text-sm font-medium text-gray-800">Workflow saved</span>
+        </div>
+      </div>
+
       <div className="flex items-center gap-3 mb-1">
         <Button variant="ghost" size="sm" onClick={() => navigate('/workflows')}>
           <ArrowLeft size={16} />

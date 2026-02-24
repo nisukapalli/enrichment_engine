@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, RefreshCw, XCircle, CheckCircle2, Clock, AlertCircle, Loader2 } from 'lucide-react'
 import { api } from '../api/client'
+import { refreshAllData } from '../lib/refresh'
 import type { BlockStatus } from '../api/types'
 import { Card, Badge, Button, Spinner } from '../components/ui'
 
@@ -17,9 +18,12 @@ function blockStatusIcon(status: BlockStatus) {
 interface BlockDisplayRow {
   type: string
   status: BlockStatus
+  blockId?: string
+  preview?: { columns: string[]; rows: Record<string, unknown>[] }
 }
 
 function BlockRow({ block, isFailed, errorMessage }: { block: BlockDisplayRow; isFailed: boolean; errorMessage?: string }) {
+  const { preview } = block
   return (
     <Card className="p-5">
       <div className="flex items-start gap-3">
@@ -34,6 +38,39 @@ function BlockRow({ block, isFailed, errorMessage }: { block: BlockDisplayRow; i
           {isFailed && errorMessage && (
             <div className="mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 font-mono break-all">
               {errorMessage}
+            </div>
+          )}
+
+          {/* Head (5 rows) after this block */}
+          {preview && preview.rows.length > 0 && (
+            <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 py-2 border-b border-gray-200">
+                First 5 rows after this block
+              </p>
+              <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-white sticky top-0">
+                      {preview.columns.map((col) => (
+                        <th key={col} className="text-left px-3 py-2 font-medium text-gray-600 whitespace-nowrap">
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.rows.map((row, i) => (
+                      <tr key={i} className="border-b border-gray-100 hover:bg-white/60">
+                        {preview.columns.map((col) => (
+                          <td key={col} className="px-3 py-2 text-gray-700 truncate max-w-[180px]" title={String(row[col] ?? '')}>
+                            {String(row[col] ?? '')}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -67,6 +104,14 @@ export function JobDetailPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['jobs', id] }),
   })
 
+  const rerunMutation = useMutation({
+    mutationFn: () => api.jobs.create({ workflow_id: job!.workflow_id }),
+    onSuccess: (newJob) => {
+      qc.invalidateQueries({ queryKey: ['jobs'] })
+      navigate(`/jobs/${newJob.id}`)
+    },
+  })
+
   const workflow = workflows.find((w) => w.id === job?.workflow_id)
   const workflowName = workflow?.name
 
@@ -87,10 +132,12 @@ export function JobDetailPage() {
   const completedBlocks = job.completed_blocks
   const progress = totalBlocks > 0 ? (completedBlocks / totalBlocks) * 100 : 0
 
-  // Build block display rows from workflow blocks + job block_states
+  // Build block display rows from workflow blocks + job block_states + block_previews
   const blockRows: BlockDisplayRow[] = workflow?.blocks.map((b) => ({
     type: b.type,
     status: (b.id ? (job.block_states[b.id] ?? 'pending') : 'pending') as BlockStatus,
+    blockId: b.id,
+    preview: b.id ? job.block_previews?.[b.id] : undefined,
   })) ?? []
 
   return (
@@ -121,10 +168,21 @@ export function JobDetailPage() {
               Cancel
             </Button>
           )}
+          {!isActive && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => rerunMutation.mutate()}
+              disabled={rerunMutation.isPending}
+            >
+              <RefreshCw size={15} />
+              Rerun
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => qc.invalidateQueries({ queryKey: ['jobs', id] })}
+            onClick={() => refreshAllData(qc)}
           >
             <RefreshCw size={14} />
             Refresh
