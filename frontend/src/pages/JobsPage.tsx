@@ -1,6 +1,7 @@
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { XCircle, Play, RefreshCw, ArrowUpRight } from 'lucide-react'
+import { XCircle, Play, RefreshCw, ArrowUpRight, ChevronDown, ChevronRight } from 'lucide-react'
 import { api } from '../api/client'
 import { refreshAllData } from '../lib/refresh'
 import { Card, Badge, Button, PageHeader, EmptyState, Spinner } from '../components/ui'
@@ -154,6 +155,22 @@ function sortJobs(jobs: Job[]): Job[] {
   })
 }
 
+function groupJobsByWorkflow(jobs: Job[]): Array<{ workflowId: string; jobs: Job[] }> {
+  const byWorkflow = new Map<string, Job[]>()
+  for (const j of jobs) {
+    const list = byWorkflow.get(j.workflow_id) ?? []
+    list.push(j)
+    byWorkflow.set(j.workflow_id, list)
+  }
+  return Array.from(byWorkflow.entries())
+    .map(([workflowId, list]) => ({ workflowId, jobs: sortJobs(list) }))
+    .sort((a, b) => {
+      const aLatest = a.jobs[0]?.started_at ?? a.jobs[0]?.created_at ?? ''
+      const bLatest = b.jobs[0]?.started_at ?? b.jobs[0]?.created_at ?? ''
+      return new Date(bLatest).getTime() - new Date(aLatest).getTime()
+    })
+}
+
 export function JobsPage() {
   const qc = useQueryClient()
 
@@ -176,7 +193,30 @@ export function JobsPage() {
     (workflows as Workflow[]).map((w) => [w.id, w])
   )
 
-  const sorted = sortJobs(jobs)
+  const groups = groupJobsByWorkflow(jobs)
+  const [expandedWorkflows, setExpandedWorkflows] = useState<Set<string>>(new Set())
+  const hasAppliedInitialExpand = useRef(false)
+
+  // On every visit to the Jobs page, expand workflow groups that have a running/pending job
+  useEffect(() => {
+    if (groups.length === 0) return
+    if (!hasAppliedInitialExpand.current) {
+      hasAppliedInitialExpand.current = true
+      const withRunning = groups
+        .filter((g) => g.jobs.some((j) => j.status === 'running' || j.status === 'pending'))
+        .map((g) => g.workflowId)
+      setExpandedWorkflows(new Set(withRunning))
+    }
+  }, [groups])
+
+  const toggleWorkflow = (workflowId: string) => {
+    setExpandedWorkflows((prev) => {
+      const next = new Set(prev)
+      if (next.has(workflowId)) next.delete(workflowId)
+      else next.add(workflowId)
+      return next
+    })
+  }
 
   return (
     <div className="p-10">
@@ -197,7 +237,7 @@ export function JobsPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-20"><Spinner size={28} /></div>
-      ) : sorted.length === 0 ? (
+      ) : groups.length === 0 ? (
         <EmptyState
           message="No jobs yet. Run a workflow to create one."
           action={
@@ -208,14 +248,46 @@ export function JobsPage() {
           }
         />
       ) : (
-        <div className="grid grid-cols-2 gap-4">
-          {sorted.map((j) => (
-            <JobCard
-              key={j.id}
-              job={j}
-              workflowName={workflowMap[j.workflow_id]?.name}
-              workflowBlocks={workflowMap[j.workflow_id]?.blocks}
-            />
+        <div className="flex flex-col md:flex-row gap-3">
+          {[groups.filter((_, i) => i % 2 === 0), groups.filter((_, i) => i % 2 === 1)].map((columnGroups, colIndex) => (
+            <div key={colIndex} className="flex-1 min-w-0 flex flex-col gap-3">
+              {columnGroups.map(({ workflowId, jobs: workflowJobs }) => {
+                const w = workflowMap[workflowId]
+                const name = w?.name ?? `Workflow ${workflowId.slice(0, 8)}`
+                const expanded = expandedWorkflows.has(workflowId)
+                return (
+                  <Card key={workflowId} className="overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => toggleWorkflow(workflowId)}
+                      className="w-full flex items-center gap-2 p-4 text-left hover:bg-gray-50 transition-colors"
+                    >
+                      {expanded ? (
+                        <ChevronDown size={18} className="text-gray-500 shrink-0" />
+                      ) : (
+                        <ChevronRight size={18} className="text-gray-500 shrink-0" />
+                      )}
+                      <span className="font-semibold text-gray-900">{name}</span>
+                      <span className="text-sm text-gray-400">
+                        {workflowJobs.length} run{workflowJobs.length !== 1 ? 's' : ''}
+                      </span>
+                    </button>
+                    {expanded && (
+                      <div className="flex flex-col gap-4 p-4 pt-0 border-t border-gray-100">
+                        {workflowJobs.map((j) => (
+                          <JobCard
+                            key={j.id}
+                            job={j}
+                            workflowName={name}
+                            workflowBlocks={w?.blocks}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                )
+              })}
+            </div>
           ))}
         </div>
       )}

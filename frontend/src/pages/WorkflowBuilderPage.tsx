@@ -1,10 +1,50 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, Trash2, Play, GripVertical, Save, Check } from 'lucide-react'
 import { api } from '../api/client'
 import type { Block, BlockType } from '../api/types'
 import { Card, Button, Input, Select, Spinner, Badge } from '../components/ui'
+
+// ── Columns before block (for filter dropdown) ─────────────────────────────
+
+function useColumnsBeforeBlock(
+  blockIndex: number,
+  blocks: Block[],
+  workflowId: string | undefined,
+) {
+  const prevBlock = blockIndex > 0 ? blocks[blockIndex - 1] : null
+  const isReadCsv = prevBlock?.type === 'read_csv'
+  const readCsvPath = isReadCsv && prevBlock.type === 'read_csv' ? prevBlock.params.path : ''
+
+  const uploadHeadQuery = useQuery({
+    queryKey: ['files', 'uploads', readCsvPath, 'head'],
+    queryFn: () => api.files.getUploadHead(readCsvPath),
+    enabled: isReadCsv && !!readCsvPath.trim(),
+  })
+
+  const jobsQuery = useQuery({
+    queryKey: ['jobs'],
+    queryFn: api.jobs.list,
+    enabled: !!prevBlock && !isReadCsv && !!workflowId,
+  })
+
+  return useMemo(() => {
+    if (!prevBlock) return { columns: [] as string[], isLoading: false }
+    if (isReadCsv) {
+      const rows = uploadHeadQuery.data
+      const cols = rows?.length && typeof rows[0] === 'object' && rows[0] !== null ? Object.keys(rows[0]) : []
+      return { columns: cols, isLoading: uploadHeadQuery.isLoading }
+    }
+    const jobs = (jobsQuery.data ?? []) as { workflow_id: string; block_previews?: Record<string, { columns: string[] }> }[]
+    const prevId = prevBlock.id
+    const latest = jobs
+      .filter((j) => j.workflow_id === workflowId)
+      .sort((a, b) => new Date((b as { created_at?: string }).created_at ?? 0).getTime() - new Date((a as { created_at?: string }).created_at ?? 0).getTime())[0]
+    const columns = (prevId && latest?.block_previews?.[prevId]?.columns) ?? []
+    return { columns, isLoading: jobsQuery.isLoading }
+  }, [prevBlock, isReadCsv, workflowId, uploadHeadQuery.data, uploadHeadQuery.isLoading, jobsQuery.data, jobsQuery.isLoading])
+}
 
 // ── Block type metadata ────────────────────────────────────────────────────
 
@@ -53,13 +93,21 @@ function defaultBlock(type: BlockType): Block {
 
 function BlockEditor({
   block,
+  blockIndex,
+  blocks,
+  workflowId,
   onChange,
   uploads,
 }: {
   block: Block
+  blockIndex: number
+  blocks: Block[]
+  workflowId: string | undefined
   onChange: (b: Block) => void
   uploads: string[]
 }) {
+  const filterColumns = useColumnsBeforeBlock(blockIndex, blocks, workflowId)
+
   if (block.type === 'read_csv') {
     if (uploads.length === 0) {
       return (
@@ -102,13 +150,36 @@ function BlockEditor({
   }
 
   if (block.type === 'filter') {
+    const { columns, isLoading } = filterColumns
+    const haveApiColumns = columns.length > 0
+    const columnOptions = [...columns]
+    const currentColumn = block.params.column.trim()
+    if (currentColumn && !columnOptions.includes(currentColumn)) {
+      columnOptions.unshift(currentColumn)
+    }
     return (
       <div className={BLOCK_GRID}>
-        <Input
-          placeholder="Column"
-          value={block.params.column}
-          onChange={(e) => onChange({ ...block, params: { ...block.params, column: e.target.value } })}
-        />
+        {haveApiColumns ? (
+          <Select
+            value={block.params.column}
+            onChange={(e) => onChange({ ...block, params: { ...block.params, column: e.target.value } })}
+          >
+            <option value="">Select column…</option>
+            {columnOptions.map((col) => (
+              <option key={col} value={col}>{col}</option>
+            ))}
+          </Select>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder={isLoading ? 'Loading columns…' : 'Column (run workflow once for dropdown)'}
+              value={block.params.column}
+              onChange={(e) => onChange({ ...block, params: { ...block.params, column: e.target.value } })}
+              disabled={isLoading}
+            />
+            {isLoading && <Spinner size={16} />}
+          </div>
+        )}
         <Select
           value={block.params.operator}
           onChange={(e) => onChange({ ...block, params: { ...block.params, operator: e.target.value as Block['params'] extends { operator: infer O } ? O : never } })}
@@ -238,6 +309,10 @@ export function WorkflowBuilderPage() {
   const [nameError, setNameError] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<Record<number, string>>({})
   const [overwriteFilename, setOverwriteFilename] = useState<string | null>(null)
+  const [draggedBlockIndex, setDraggedBlockIndex] = useState<number | null>(null)
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
+  const [draggedFromPalette, setDraggedFromPalette] = useState<BlockType | null>(null)
+  const dragImageCloneRef = useRef<HTMLElement | null>(null)
 
   const currentBlocks = blocks ?? workflow?.blocks ?? []
   const currentName = name ?? workflow?.name ?? ''
@@ -341,8 +416,25 @@ export function WorkflowBuilderPage() {
   const removeBlock = (i: number) =>
     setBlocks(currentBlocks.filter((_, ci) => ci !== i))
 
-  const addBlock = (type: BlockType) =>
-    setBlocks([...currentBlocks, defaultBlock(type)])
+  const reorderBlocks = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return
+    const next = [...currentBlocks]
+    const [removed] = next.splice(fromIndex, 1)
+    next.splice(fromIndex < toIndex ? toIndex - 1 : toIndex, 0, removed)
+    setBlocks(next)
+  }
+
+  const addBlock = (type: BlockType) => {
+    const newBlock = defaultBlock(type) as Block & { id?: string }
+    if (!newBlock.id) newBlock.id = `new-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    setBlocks([...currentBlocks, newBlock])
+  }
+
+  const insertBlockAt = (type: BlockType, index: number) => {
+    const newBlock = defaultBlock(type) as Block & { id?: string }
+    if (!newBlock.id) newBlock.id = `new-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    setBlocks([...currentBlocks.slice(0, index), newBlock, ...currentBlocks.slice(index)])
+  }
 
   if (isLoading) {
     return <div className="flex justify-center py-20"><Spinner size={24} /></div>
@@ -440,67 +532,231 @@ export function WorkflowBuilderPage() {
       )}
 
       <div className="grid grid-cols-[1fr_280px] gap-6">
-        {/* Block chain */}
+        {/* Block chain — drag blocks here to build the workflow */}
         <div className="flex flex-col gap-2">
           {currentBlocks.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-14 border border-dashed border-gray-200 rounded-xl text-center">
-              <p className="text-sm text-gray-400">No blocks yet. Add one from the right panel.</p>
+            <div
+              className={`flex flex-col items-center justify-center py-14 border-2 border-dashed rounded-xl text-center transition-colors ${
+                dropTargetIndex === 0 && draggedFromPalette ? 'border-sky-400 bg-sky-50' : 'border-gray-200'
+              }`}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = draggedFromPalette ? 'copy' : 'none'
+                if (draggedFromPalette) setDropTargetIndex(0)
+              }}
+              onDragLeave={() => setDropTargetIndex(null)}
+              onDrop={(e) => {
+                e.preventDefault()
+                const type = e.dataTransfer.getData('application/x-block-type') as BlockType | ''
+                if (type && (Object.keys(BLOCK_META) as BlockType[]).includes(type)) {
+                  insertBlockAt(type, 0)
+                }
+                setDraggedFromPalette(null)
+                setDropTargetIndex(null)
+              }}
+            >
+              <p className="text-sm text-gray-500 mb-1">Drag blocks here to start the workflow</p>
+              <p className="text-xs text-gray-400">or click a block type on the right to add it</p>
             </div>
           )}
 
-          {currentBlocks.map((block, i) => {
-            const meta = BLOCK_META[block.type]
-            const error = validationErrors[i]
-            return (
-              <div key={i} className="relative">
-                {i > 0 && (
-                  <div className="absolute -top-2 left-6 w-px h-2 bg-gray-200" />
-                )}
-                <Card className={`p-4 ${error ? 'border-red-300' : ''}`}>
-                  <div className="flex items-start gap-2">
-                    <GripVertical size={16} className="text-gray-300 mt-1 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2.5">
-                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${meta.dot}`} />
-                        <span className={`text-sm font-semibold ${meta.color}`}>{meta.label}</span>
-                        <Badge status={`step ${i + 1}`} />
-                        {error && <span className="text-xs text-red-500 ml-1">— {error}</span>}
-                      </div>
-                      <BlockEditor block={block} onChange={(b) => updateBlock(i, b)} uploads={uploads} />
-                    </div>
-                    <button
-                      onClick={() => removeBlock(i)}
-                      className="text-gray-300 hover:text-red-500 transition-colors p-1 mt-0.5 shrink-0"
-                    >
-                      <Trash2 size={15} />
-                    </button>
+          {currentBlocks.length > 0 && (
+            <>
+              {(() => {
+                const isDragging = draggedBlockIndex !== null || draggedFromPalette !== null
+                return currentBlocks.map((block, i) => (
+                <div key={`slot-${i}`} className="flex flex-col gap-0">
+                  {/* Drop slot above block i — large hit area; connector line runs full height */}
+                  <div
+                    className={`relative rounded-lg transition-all duration-150 flex items-center justify-center ${
+                      dropTargetIndex === i
+                        ? 'min-h-[56px] border-2 border-dashed border-sky-400 bg-sky-50'
+                        : isDragging
+                          ? 'min-h-[44px] border-2 border-dashed border-gray-200 bg-gray-50/50'
+                          : 'min-h-[28px] border-2 border-transparent border-gray-100 hover:bg-gray-50/50'
+                    }`}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      const fromPalette = e.dataTransfer.types.includes('application/x-block-type')
+                      if (fromPalette) {
+                        e.dataTransfer.dropEffect = 'copy'
+                        setDropTargetIndex(i)
+                      } else {
+                        e.dataTransfer.dropEffect = 'move'
+                        if (draggedBlockIndex !== null) setDropTargetIndex(i)
+                      }
+                    }}
+                    onDragLeave={() => setDropTargetIndex(null)}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      const type = e.dataTransfer.getData('application/x-block-type') as BlockType | ''
+                      if (type && (Object.keys(BLOCK_META) as BlockType[]).includes(type)) {
+                        insertBlockAt(type, i)
+                      } else {
+                        const from = parseInt(e.dataTransfer.getData('text/plain'), 10)
+                        if (!Number.isNaN(from) && from !== i) reorderBlocks(from, i)
+                      }
+                      setDraggedBlockIndex(null)
+                      setDraggedFromPalette(null)
+                      setDropTargetIndex(null)
+                    }}
+                  >
+                    {/* Connector line runs full height of slot so chain is continuous */}
+                    <div className="absolute inset-y-0 left-6 w-px border-l border-dashed border-gray-200 pointer-events-none" />
+                    {dropTargetIndex === i && (
+                      <p className="text-xs font-medium text-sky-600 relative z-10">Drop here</p>
+                    )}
                   </div>
-                </Card>
+
+                  {/* Block card — only the grip is draggable; custom drag image so whole card moves */}
+                  <div className="relative">
+                    <Card
+                      data-block-card
+                      className={`p-4 transition-colors ${
+                        validationErrors[i] ? 'border-red-300' : ''
+                      } ${draggedBlockIndex === i ? 'opacity-50' : ''}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/plain', String(i))
+                            e.dataTransfer.effectAllowed = 'move'
+                            setDraggedBlockIndex(i)
+                            const card = (e.currentTarget as HTMLElement).closest('[data-block-card]') as HTMLElement | null
+                            if (card) {
+                              const rect = card.getBoundingClientRect()
+                              const ox = e.clientX - rect.left
+                              const oy = e.clientY - rect.top
+                              const clone = card.cloneNode(true) as HTMLElement
+                              clone.style.position = 'fixed'
+                              clone.style.left = '-9999px'
+                              clone.style.top = '0'
+                              clone.style.width = `${rect.width}px`
+                              clone.style.pointerEvents = 'none'
+                              clone.style.zIndex = '9999'
+                              clone.style.boxShadow = '0 10px 40px rgba(0,0,0,0.15)'
+                              document.body.appendChild(clone)
+                              e.dataTransfer.setDragImage(clone, ox, oy)
+                              dragImageCloneRef.current = clone
+                            }
+                          }}
+                          onDragEnd={() => {
+                            if (dragImageCloneRef.current?.parentNode) {
+                              dragImageCloneRef.current.remove()
+                              dragImageCloneRef.current = null
+                            }
+                            setDraggedBlockIndex(null)
+                            setDropTargetIndex(null)
+                          }}
+                          className="cursor-grab active:cursor-grabbing touch-none mt-1 shrink-0 rounded p-0.5 -m-0.5 text-gray-400 hover:text-gray-600"
+                        >
+                          <GripVertical size={16} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2.5">
+                            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${BLOCK_META[block.type].dot}`} />
+                            <span className={`text-sm font-semibold ${BLOCK_META[block.type].color}`}>{BLOCK_META[block.type].label}</span>
+                            <Badge status={`step ${i + 1}`} />
+                            {validationErrors[i] && (
+                              <span className="text-xs text-red-500 ml-1">— {validationErrors[i]}</span>
+                            )}
+                          </div>
+                          <BlockEditor
+                            block={block}
+                            blockIndex={i}
+                            blocks={currentBlocks}
+                            workflowId={id}
+                            onChange={(b) => updateBlock(i, b)}
+                            uploads={uploads}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeBlock(i)}
+                          className="text-gray-300 hover:text-red-500 transition-colors p-1 mt-0.5 shrink-0"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </Card>
+                  </div>
+                </div>
+              ))
+              })()}
+
+              {/* Drop slot after last block */}
+              <div
+                className={`relative rounded-lg transition-all duration-150 flex items-center justify-center ${
+                  dropTargetIndex === currentBlocks.length
+                    ? 'min-h-[56px] border-2 border-dashed border-sky-400 bg-sky-50'
+                    : (draggedBlockIndex !== null || draggedFromPalette !== null)
+                      ? 'min-h-[44px] border-2 border-dashed border-gray-200 bg-gray-50/50'
+                      : 'min-h-[28px] border-2 border-transparent border-gray-100 hover:bg-gray-50/50'
+                }`}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  const fromPalette = e.dataTransfer.types.includes('application/x-block-type')
+                  if (fromPalette) {
+                    e.dataTransfer.dropEffect = 'copy'
+                    setDropTargetIndex(currentBlocks.length)
+                  } else {
+                    e.dataTransfer.dropEffect = 'move'
+                    if (draggedBlockIndex !== null) setDropTargetIndex(currentBlocks.length)
+                  }
+                }}
+                onDragLeave={() => setDropTargetIndex(null)}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  const type = e.dataTransfer.getData('application/x-block-type') as BlockType | ''
+                  if (type && (Object.keys(BLOCK_META) as BlockType[]).includes(type)) {
+                    insertBlockAt(type, currentBlocks.length)
+                  } else {
+                    const from = parseInt(e.dataTransfer.getData('text/plain'), 10)
+                    if (!Number.isNaN(from)) reorderBlocks(from, currentBlocks.length)
+                  }
+                  setDraggedBlockIndex(null)
+                  setDraggedFromPalette(null)
+                  setDropTargetIndex(null)
+                }}
+              >
+                {/* No connector line in last slot — avoids trailing line below the last block */}
+                {dropTargetIndex === currentBlocks.length && (
+                  <p className="text-xs font-medium text-sky-600 relative z-10">Drop here</p>
+                )}
               </div>
-            )
-          })}
+            </>
+          )}
         </div>
 
-        {/* Block palette */}
+        {/* Block palette — drag block types into the chain */}
         <div>
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-            Add Block
+            Add Block (drag or click)
           </p>
           <div className="flex flex-col gap-2">
             {(Object.keys(BLOCK_META) as BlockType[]).map((type) => {
               const meta = BLOCK_META[type]
               return (
-                <button
+                <div
                   key={type}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-block-type', type)
+                    e.dataTransfer.effectAllowed = 'copy'
+                    setDraggedFromPalette(type)
+                  }}
+                  onDragEnd={() => setDraggedFromPalette(null)}
                   onClick={() => addBlock(type)}
-                  className="flex items-start gap-3 px-4 py-3.5 rounded-lg bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-left transition-colors cursor-pointer"
+                  className="flex items-start gap-3 px-4 py-3.5 rounded-lg bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-left transition-colors cursor-grab active:cursor-grabbing"
                 >
+                  <GripVertical size={16} className="text-gray-300 mt-1 shrink-0" />
                   <span className={`w-2.5 h-2.5 rounded-full shrink-0 mt-1 ${meta.dot}`} />
                   <div>
                     <p className={`text-sm font-semibold ${meta.color}`}>{meta.label}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{meta.description}</p>
                   </div>
-                </button>
+                </div>
               )
             })}
           </div>

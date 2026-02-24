@@ -89,6 +89,8 @@ export interface Job {
   started_at?: string
   finished_at?: string
   error_message?: string
+  /** Optional details (e.g. traceback) for failed jobs */
+  error_details?: Record<string, unknown>
   /** Head (5 rows) of the dataframe after this block ran; keyed by block id */
   block_previews?: Record<string, { columns: string[]; rows: Record<string, unknown>[] }>
 }

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, RefreshCw, XCircle, CheckCircle2, Clock, AlertCircle, Loader2 } from 'lucide-react'
@@ -22,8 +23,20 @@ interface BlockDisplayRow {
   preview?: { columns: string[]; rows: Record<string, unknown>[] }
 }
 
-function BlockRow({ block, isFailed, errorMessage }: { block: BlockDisplayRow; isFailed: boolean; errorMessage?: string }) {
+function BlockRow({
+  block,
+  isFailed,
+  errorMessage,
+  errorDetails,
+}: {
+  block: BlockDisplayRow
+  isFailed: boolean
+  errorMessage?: string
+  errorDetails?: Record<string, unknown>
+}) {
+  const [showDetails, setShowDetails] = useState(false)
   const { preview } = block
+  const traceback = errorDetails && typeof errorDetails.traceback === 'string' ? errorDetails.traceback : null
   return (
     <Card className="p-5">
       <div className="flex items-start gap-3">
@@ -34,10 +47,29 @@ function BlockRow({ block, isFailed, errorMessage }: { block: BlockDisplayRow; i
             <Badge status={block.status} />
           </div>
 
-          {/* Error for this block */}
-          {isFailed && errorMessage && (
-            <div className="mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 font-mono break-all">
-              {errorMessage}
+          {/* Error for this block — always show when failed so user sees why */}
+          {isFailed && (
+            <div className="mt-2 space-y-2">
+              <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 font-mono break-all">
+                <span className="font-semibold">Error: </span>
+                {errorMessage?.trim() || 'No error details were recorded.'}
+              </div>
+              {traceback && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDetails(!showDetails)}
+                    className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                  >
+                    {showDetails ? 'Hide' : 'Show'} traceback
+                  </button>
+                  {showDetails && (
+                    <pre className="mt-1 p-3 bg-gray-900 text-gray-100 rounded-lg text-xs overflow-x-auto overflow-y-auto max-h-48 whitespace-pre-wrap break-all">
+                      {traceback}
+                    </pre>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -251,7 +283,8 @@ export function JobDetailPage() {
                 key={i}
                 block={b}
                 isFailed={b.status === 'failed'}
-                errorMessage={b.status === 'failed' ? job.error_message : undefined}
+                errorMessage={b.status === 'failed' ? (job.error_message ?? undefined) : undefined}
+                errorDetails={b.status === 'failed' ? job.error_details : undefined}
               />
             ))}
           </div>
