@@ -144,15 +144,22 @@ async def run_enrich_lead(block: EnrichLeadBlock, df: pd.DataFrame) -> pd.DataFr
             if r is None:
                 values.append(None)
                 continue
-            # API may return our column key, the description text, or a different casing
-            val = r.get(key)
+            # Per SixtyFour docs: enriched fields are in result["structured_data"], not result top-level
+            structured = r.get("structured_data") if isinstance(r, dict) else None
+            if not isinstance(structured, dict):
+                structured = {}
+            # Prefer structured_data[key], then fallbacks for description/case-insensitive
+            val = structured.get(key)
             if val is None and isinstance(description, str) and description.strip():
-                val = r.get(description)
-            if val is None and isinstance(r, dict):
-                for k, v in r.items():
+                val = structured.get(description)
+            if val is None:
+                for k, v in structured.items():
                     if k is not None and str(k).strip().lower() == str(key).strip().lower():
                         val = v
                         break
+            # If still missing, legacy fallback: top-level result (e.g. older API shape)
+            if val is None and isinstance(r, dict):
+                val = r.get(key) or (r.get(description) if isinstance(description, str) else None)
             # API may return a list for a field; take first element for a single cell value
             if isinstance(val, (list, np.ndarray)) and len(val) > 0:
                 val = val[0]

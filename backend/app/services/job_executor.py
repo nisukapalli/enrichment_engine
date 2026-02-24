@@ -8,6 +8,7 @@ honoured between steps.
 """
 import asyncio
 import os
+import traceback
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -25,14 +26,25 @@ from app.services.block_runners import (
 )
 
 
+def _format_error(exc: BaseException) -> tuple[str, dict]:
+    """Return (non-empty error message, details dict with traceback)."""
+    msg = str(exc).strip() or repr(exc) or type(exc).__name__
+    if not msg:
+        msg = f"{type(exc).__name__}: (no message)"
+    details = {"traceback": traceback.format_exc()}
+    return (msg, details)
+
+
 async def execute_job(job_id: str) -> None:
     try:
         await _execute_job_inner(job_id)
     except Exception as exc:
+        msg, details = _format_error(exc)
         job_store.update_job(job_id, {
             "status": JobStatus.FAILED,
             "current_block_id": None,
-            "error_message": f"Unexpected executor error: {exc}",
+            "error_message": f"Unexpected executor error: {msg}",
+            "error_details": details,
             "finished_at": datetime.now(timezone.utc),
         })
 
@@ -83,11 +95,13 @@ async def _execute_job_inner(job_id: str) -> None:
         except Exception as exc:
             current_job = job_store.get_job(job_id)
             updated_states = {**current_job.block_states, block.id: JobStatus.FAILED}
+            msg, details = _format_error(exc)
             job_store.update_job(job_id, {
                 "status": JobStatus.FAILED,
                 "failed_block_id": block.id,
                 "current_block_id": None,
-                "error_message": str(exc),
+                "error_message": msg,
+                "error_details": details,
                 "block_states": updated_states,
                 "finished_at": datetime.now(timezone.utc),
             })
