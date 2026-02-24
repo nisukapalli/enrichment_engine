@@ -3,8 +3,8 @@ Background job executor.
 
 Runs all blocks in a workflow sequentially, updating job and per-block
 states (PENDING → RUNNING → COMPLETED | FAILED) as execution proceeds.
-Checks for cancellation before each block so that cancel requests are
-honoured between steps.
+Checks for cancellation before each block and mid-block (for async API
+blocks) so that cancel requests are honoured promptly.
 """
 import asyncio
 import os
@@ -33,6 +33,43 @@ def _format_error(exc: BaseException) -> tuple[str, dict]:
         msg = f"{type(exc).__name__}: (no message)"
     details = {"traceback": traceback.format_exc()}
     return (msg, details)
+
+
+async def _run_cancellable(job_id: str, coro) -> Optional[pd.DataFrame]:
+    """
+    Run an async block coroutine as a Task so it can be interrupted mid-flight
+    if the job is cancelled. Polls job status every second; on detection,
+    cancels the underlying task and raises CancelledError so the executor stops.
+
+    Without this, an enrich_lead or find_email block would run all rows to
+    completion before the cancel flag is checked, because asyncio.gather()
+    holds the await until every row finishes. Since block runners work on a
+    copy of the DataFrame and only return it at the end, cancelling mid-block
+    leaves the original DataFrame intact — no partial or corrupt state.
+    """
+    task = asyncio.create_task(coro)
+    try:
+        while not task.done():
+            await asyncio.sleep(1)
+            if task.done():
+                break
+            current_job = job_store.get_job(job_id)
+            if current_job is None or current_job.status == JobStatus.CANCELLED:
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                raise asyncio.CancelledError()
+        return task.result()
+    except asyncio.CancelledError:
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        raise
 
 
 async def execute_job(job_id: str) -> None:
@@ -87,11 +124,14 @@ async def _execute_job_inner(job_id: str) -> None:
             elif block.type == BlockType.FILTER:
                 df = await asyncio.to_thread(run_filter, block, df)
             elif block.type == BlockType.ENRICH_LEAD:
-                df = await run_enrich_lead(block, df)
+                df = await _run_cancellable(job_id, run_enrich_lead(block, df))
             elif block.type == BlockType.FIND_EMAIL:
-                df = await run_find_email(block, df)
+                df = await _run_cancellable(job_id, run_find_email(block, df))
             elif block.type == BlockType.SAVE_CSV:
                 df = await asyncio.to_thread(run_save_csv, block, df)
+        except asyncio.CancelledError:
+            job_store.update_job(job_id, {"current_block_id": None})
+            return
         except Exception as exc:
             current_job = job_store.get_job(job_id)
             updated_states = {**current_job.block_states, block.id: JobStatus.FAILED}
