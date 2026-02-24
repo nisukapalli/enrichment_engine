@@ -31,6 +31,8 @@ class Job(BaseModel):
 
     result_preview: Optional[Dict[str, Any]] = None
     output_path: Optional[str] = None
+    # After each block runs, head (5 rows) of the dataframe at that step; keyed by block id
+    block_previews: Optional[Dict[str, Dict[str, Any]]] = None
 
 
 class JobCreate(BaseModel):

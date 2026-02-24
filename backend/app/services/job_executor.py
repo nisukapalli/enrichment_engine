@@ -95,10 +95,17 @@ async def _execute_job_inner(job_id: str) -> None:
 
         current_job = job_store.get_job(job_id)
         updated_states = {**current_job.block_states, block.id: JobStatus.COMPLETED}
+        block_previews = dict(current_job.block_previews or {})
+        if df is not None and not df.empty:
+            block_previews[block.id] = {
+                "columns": list(df.columns),
+                "rows": df.head(5).to_dict(orient="records"),
+            }
         job_store.update_job(job_id, {
             "completed_blocks": current_job.completed_blocks + 1,
             "current_block_id": None,
             "block_states": updated_states,
+            "block_previews": block_previews,
         })
 
     result_preview = None

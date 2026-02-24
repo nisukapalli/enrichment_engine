@@ -1,3 +1,4 @@
+import csv
 import os
 from fastapi import APIRouter, HTTPException, UploadFile, File, status
 from fastapi.responses import FileResponse
@@ -77,6 +78,44 @@ async def download_file(filename: str):
             detail="File not found",
         )
     return FileResponse(path, filename=filename, media_type="text/csv")
+
+
+def _read_csv_head(path: str, max_rows: int = 10) -> list[dict]:
+    """Read first max_rows of a CSV and return as list of dicts."""
+    rows: list[dict] = []
+    with open(path, newline="", encoding="utf-8", errors="replace") as f:
+        reader = csv.DictReader(f)
+        for i, row in enumerate(reader):
+            if i >= max_rows:
+                break
+            rows.append(dict(row))
+    return rows
+
+
+@router.get("/uploads/{filename}/head")
+async def get_upload_head(filename: str):
+    """Return first 10 rows of an upload CSV as JSON."""
+    filename = _safe_filename(filename)
+    path = os.path.join(_UPLOADS_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found",
+        )
+    return {"rows": _read_csv_head(path)}
+
+
+@router.get("/outputs/{filename}/head")
+async def get_output_head(filename: str):
+    """Return first 10 rows of an output CSV as JSON."""
+    filename = _safe_filename(filename)
+    path = os.path.join(_OUTPUTS_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found",
+        )
+    return {"rows": _read_csv_head(path)}
 
 
 @router.delete("/uploads/{filename}", status_code=status.HTTP_204_NO_CONTENT)

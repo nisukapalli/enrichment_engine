@@ -1,5 +1,6 @@
 import asyncio
 import os
+import numpy as np
 import pandas as pd
 from typing import Any, Dict
 
@@ -74,9 +75,14 @@ def run_filter(block: FilterBlock, df: pd.DataFrame) -> pd.DataFrame:
 
 
 def run_save_csv(block: SaveCsvBlock, df: pd.DataFrame) -> pd.DataFrame:
-    filename = os.path.basename(block.params.path)
+    raw = (block.params.path or "").strip()
+    if not raw:
+        raise ValueError(f"Invalid path in save_csv block: '{block.params.path}'")
+    filename = os.path.basename(raw)
     if not filename:
         raise ValueError(f"Invalid path in save_csv block: '{block.params.path}'")
+    if not filename.lower().endswith(".csv"):
+        filename = filename + ".csv"
     os.makedirs(_OUTPUTS_DIR, exist_ok=True)
     path = os.path.join(_OUTPUTS_DIR, filename)
     df.to_csv(path, index=False)
@@ -86,6 +92,28 @@ def run_save_csv(block: SaveCsvBlock, df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # API runners
 # ---------------------------------------------------------------------------
+
+def _scalar_for_lead(val: Any) -> Any:
+    """
+    Convert a dataframe cell value to a JSON-serializable scalar for the
+    enrich-lead API. Avoids "truth value of an array is ambiguous" when
+    a column contains arrays/lists (e.g. from find_email returning a list).
+    """
+    if val is None:
+        return None
+    if isinstance(val, pd.Series):
+        return _scalar_for_lead(val.iloc[0]) if len(val) else None
+    if isinstance(val, (list, np.ndarray)):
+        return _scalar_for_lead(val[0]) if len(val) else None
+    if hasattr(val, "item"):  # numpy scalar (np.int64, np.float64, etc.)
+        return val.item()
+    try:
+        if pd.isna(val):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return val
+
 
 async def run_enrich_lead(block: EnrichLeadBlock, df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -97,7 +125,7 @@ async def run_enrich_lead(block: EnrichLeadBlock, df: pd.DataFrame) -> pd.DataFr
     sem = asyncio.Semaphore(MAX_CONCURRENT_API_CALLS)
 
     async def _enrich_one(row: pd.Series) -> Dict[str, Any]:
-        lead_info = {k: (None if pd.isna(v) else v) for k, v in row.to_dict().items()}
+        lead_info = {k: _scalar_for_lead(v) for k, v in row.to_dict().items()}
         async with sem:
             task_id = await sixtyfour_client.enrich_lead_async(
                 lead_info=lead_info,
@@ -110,7 +138,26 @@ async def run_enrich_lead(block: EnrichLeadBlock, df: pd.DataFrame) -> pd.DataFr
 
     enriched_df = df.copy()
     for key in block.params.struct:
-        enriched_df[key] = [r.get(key) for r in results]
+        description = block.params.struct.get(key)
+        values = []
+        for r in results:
+            if r is None:
+                values.append(None)
+                continue
+            # API may return our column key, the description text, or a different casing
+            val = r.get(key)
+            if val is None and isinstance(description, str) and description.strip():
+                val = r.get(description)
+            if val is None and isinstance(r, dict):
+                for k, v in r.items():
+                    if k is not None and str(k).strip().lower() == str(key).strip().lower():
+                        val = v
+                        break
+            # API may return a list for a field; take first element for a single cell value
+            if isinstance(val, (list, np.ndarray)) and len(val) > 0:
+                val = val[0]
+            values.append(val)
+        enriched_df[key] = values
 
     return enriched_df
 
